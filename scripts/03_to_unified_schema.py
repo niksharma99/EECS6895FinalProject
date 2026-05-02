@@ -2,7 +2,12 @@
 Remap stratified Moral Machine subsample to the unified schema (§3.4 of PLAN.md).
 
 Reads:  data/interim/moral_machine_80.jsonl
-Writes: data/base_scenarios.jsonl  (appended/created — Moral Machine slice only for now)
+Writes: data/interim/moral_machine_80_unified.jsonl  (per-source unified slice)
+
+Note: the final assembled dataset `data/base_scenarios.jsonl` is built by
+`scripts/10_assemble_base_scenarios.py`, which concatenates all
+`data/interim/*_unified.jsonl` files. Don't write to base_scenarios.jsonl
+from a per-source script.
 
 Ground-truth derivation:
     Awad et al. 2018 (Nature) reported global aggregate preferences from ~40M
@@ -24,7 +29,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 IN_PATH = REPO_ROOT / "data" / "interim" / "moral_machine_80.jsonl"
-OUT_PATH = REPO_ROOT / "data" / "base_scenarios.jsonl"
+OUT_PATH = REPO_ROOT / "data" / "interim" / "moral_machine_80_unified.jsonl"
 
 # Awad et al. 2018 global aggregate preferences (the group preferred to spare).
 # Source: Awad et al., Nature 2018, Fig. 2 (global average effect sizes).
@@ -57,6 +62,7 @@ def to_unified(idx: int, raw: dict) -> dict:
     return {
         "scenario_id": f"mm_{idx:04d}",
         "source": "moral_machine",
+        "task_format": "binary_dilemma",
         "base_text": raw["user_content"],
         "options": ["case_1", "case_2"],
         "attributes": {

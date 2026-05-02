@@ -107,6 +107,7 @@ All sources should be remapped to a single JSONL format:
 {
   "scenario_id": "mm_0042",
   "source": "moral_machine" | "scruples" | "ethics_deontology" | "ethics_justice",
+  "task_format": "binary_dilemma" | "unary_judgment" | "narrative_judgment",
   "base_text": "A self-driving car with sudden brake failure will...",
   "options": ["case_1", "case_2"],
   "attributes": {
@@ -122,6 +123,16 @@ All sources should be remapped to a single JSONL format:
   "metadata": {}
 }
 ```
+
+**`task_format` (added 2026-05-02):** discriminator that lets the Counterfactualist and Maieutic Inquirer dispatch on perturbation strategy without re-inferring the source's structural shape:
+
+| value | sources | options shape | what perturbations look like |
+|---|---|---|---|
+| `binary_dilemma` | Moral Machine | `["case_1", "case_2"]` | demographic swaps, count changes, flag flips (law/intervention/in_car) |
+| `unary_judgment` | ETHICS Deontology + Justice | `["reasonable", "unreasonable"]` | rephrase the rule/excuse, swap actor identity, change context — no second case to pivot against |
+| `narrative_judgment` | Scruples | `["author_wrong", "other_wrong"]` | swap perspective (first→third person), swap actor demographics, change stake magnitude |
+
+This was promoted from "decide later" to a hard schema field on 2026-05-02, before writing the ETHICS unify script — ETHICS-Deontology is `(scenario, excuse, is_reasonable_label)`, a unary judgment, and forcing it into `case_1`/`case_2` framing would distort it.
 
 ### 3.5 Counterfactual Generation Pipeline
 
@@ -402,9 +413,15 @@ For 2-person team with May 5 deadline, hold these limits:
 
 ---
 
-## 10. Tonight's Goal (Dataset Compilation)
+## 10. Dataset Compilation Status
 
 **Target:** single file `data/base_scenarios.jsonl` with 180 entries in unified schema.
+
+**Current state (2026-05-02):** 120 of 180 records landed.
+- ✅ Phase 1 — Moral Machine (80 records, `mm_0001..mm_0080`) — see §13 entries from 2026-05-01.
+- ✅ Phase 3 — Hendrycks ETHICS (40 records, `et_0001..et_0040`) — see §13 entry from 2026-05-02 ("Phase 3 complete").
+- ⏳ Phase 2 — Scruples (60 records, `sc_0001..sc_0060`) — pending; plan in §13.
+- ⏳ Final assembly check on 180 records — happens automatically when `10_assemble_base_scenarios.py` re-runs.
 
 ### 10.1 Phase 1 — Moral Machine (80 items, ~1.5 hours)
 
@@ -475,7 +492,7 @@ ethical judgments on 32,000 real-life anecdotes. AAAI.
 
 ---
 
-*Last updated: May 1, 2026*
+*Last updated: May 2, 2026 — Phase 3 (ETHICS, 40 items) complete; `data/base_scenarios.jsonl` now 120 records. Phase 2 (Scruples) remains.*
 
 ---
 
@@ -522,4 +539,167 @@ EECS6895FinalProject/
     - Result: 69/80 records have a non-null ground_truth_majority; the 11 `random`-dim records are intentionally null.
 - ✅ Output: `data/base_scenarios.jsonl` (80 records, tracked in git).
 
-**Phase 1 done. Next: Phase 2 (Scruples, 60 items, §10.2) — should append to the same `data/base_scenarios.jsonl` so the final file naturally grows to 180.**
+**Phase 1 done.** Final state on disk:
+```
+data/
+├── raw/moral_machine/scenarios_seed42.jsonl   (210 records, gitignored, seed=42)
+├── interim/moral_machine_80.jsonl             (80 records, tracked, seed=4242 for sampling)
+└── base_scenarios.jsonl                       (80 records, tracked — mm_0001..mm_0080)
+scripts/
+├── 01_generate_moral_machine.py
+├── 02_stratify_moral_machine.py
+└── 03_to_unified_schema.py
+EXAMPLE.md                                      (teammate-facing walkthrough of the data)
+```
+
+Pushed to branch on 2026-05-01.
+
+---
+
+### 2026-05-02 — Refactor: per-source `*_unified.jsonl` slices + `task_format` field
+
+**Refactor before continuing dataset build:**
+- ✅ `scripts/03_to_unified_schema.py` now writes to `data/interim/moral_machine_80_unified.jsonl` (per-source slice) instead of `data/base_scenarios.jsonl`. Ground-truth derivation is unchanged.
+- ✅ Added `task_format: "binary_dilemma"` to every Moral Machine record.
+- ✅ New `scripts/10_assemble_base_scenarios.py` — globs `data/interim/*_unified.jsonl`, validates required fields + scenario_id uniqueness, concatenates into `data/base_scenarios.jsonl`. Phase 4 verification (was script `10_verify_*`) is now folded into this assembly step's pre-write asserts.
+- ✅ Round-trip sanity check: 80/80 records identical to pre-refactor `base_scenarios.jsonl` modulo the new `task_format` field.
+
+**Schema change (§3.4):**
+- Added `task_format ∈ {binary_dilemma, unary_judgment, narrative_judgment}`. Promoted from "decide later" to a hard schema field before writing the ETHICS unify script. See §3.4 for the dispatch table.
+
+**File layout convention (now formalized):**
+```
+data/
+├── raw/<source>/                    # gitignored, source-native dump
+├── interim/<source>_NN.jsonl        # tracked, source-native subsample
+├── interim/<source>_NN_unified.jsonl # tracked, unified-schema slice (one per source)
+└── base_scenarios.jsonl             # tracked, ASSEMBLED — never written by per-source scripts
+```
+
+**Implication for tomorrow's plan:** the previously-numbered scripts shift — Phase 2 unify becomes `06_scruples_to_unified.py` writing to `data/interim/scruples_60_unified.jsonl`; Phase 3 unify becomes `09_ethics_to_unified.py` writing to `data/interim/ethics_40_unified.jsonl`. Each script then re-runs `10_assemble_base_scenarios.py` to refresh `data/base_scenarios.jsonl`. The standalone "Phase 4 verify" step is no longer needed — `10_assemble_*` does it.
+
+---
+
+### 2026-05-02 — Phase 3 complete: ETHICS (40 items)
+
+**What landed:**
+- ✅ `scripts/07_load_ethics.py` — downloads the canonical Berkeley tarball (`https://people.eecs.berkeley.edu/~hendrycks/ethics.tar`, 35.6 MB, cached at `data/raw/ethics/ethics.tar`), extracts and dumps 4 splits to `data/raw/ethics/{deontology,justice}_{test,test_hard}.jsonl` (gitignored). HF mirror `hendrycks/ethics` was unusable on current `datasets` (legacy loading script).
+- ✅ `scripts/08_filter_ethics.py` — `random.seed(4242)`, samples 10 from each of 4 splits → `data/interim/ethics_40.jsonl` (40 records, tracked).
+- ✅ `scripts/09_ethics_to_unified.py` — writes per-source slice `data/interim/ethics_40_unified.jsonl` (40 records, tracked) per ETHICS_PLAN §4.1/§4.2 templates.
+- ✅ Re-ran `scripts/10_assemble_base_scenarios.py` → `data/base_scenarios.jsonl` is now **120 records** (80 mm + 40 et).
+
+**Field shapes confirmed against canonical CSV (was the §7 risk):**
+- Deontology rows: `{label, scenario, excuse}` (label ∈ {0, 1}). Splits: deontology/test 3,596 rows, deontology/test_hard 3,536 rows.
+- Justice rows: `{label, scenario}` (label ∈ {0, 1}). Splits: justice/test 2,704 rows, justice/test_hard 2,052 rows.
+
+**Label semantics confirmed (read examples by hand):**
+- Deontology: `label=1` → "reasonable" excuse; `label=0` → "unreasonable" excuse.
+- Justice: `label=1` → "justified" desert claim; `label=0` → "unjustified" desert claim.
+- Encoded as `DEONT_LABEL` / `JUSTICE_LABEL` lookup tables in `09_ethics_to_unified.py`.
+
+**ID allocation (per ETHICS_PLAN §4.3):**
+- `et_0001..et_0010` deontology/test
+- `et_0011..et_0020` deontology/test_hard
+- `et_0021..et_0030` justice/test
+- `et_0031..et_0040` justice/test_hard
+
+**ETHICS_PLAN.md Definition-of-Done check:**
+- ✅ `data/raw/ethics/` contains the 4 split files plus the cached tarball (all gitignored)
+- ✅ `data/interim/ethics_40.jsonl` exists, tracked, exactly 40 records
+- ✅ `data/base_scenarios.jsonl` has 120 records (80 mm + 40 et), no duplicate IDs
+- ✅ All 40 ETHICS records have non-null `ground_truth_majority`
+- ✅ All 40 ETHICS records have `task_format: "unary_judgment"`
+- ✅ All 40 ETHICS records pass `len(base_text) < 8000` sanity
+- ✅ This changelog entry
+
+**Stretch (virtue) — skipped for now.** Will revisit only if Phase 2 (Scruples) finishes early.
+
+**Phase 3 done. ETHICS_PLAN.md can be removed.** Next: Phase 2 (Scruples, 60 items) to bring `base_scenarios.jsonl` from 120 → 180.
+
+---
+
+### 2026-05-02 — Plan for the rest of the dataset (Phase 2 Scruples + assembly)
+
+**Goal:** grow `data/base_scenarios.jsonl` from 80 → 180 records by appending Scruples and ETHICS slices in the same unified schema, then run a Phase 4 verification pass.
+
+#### Working principles to carry forward from Phase 1
+
+1. **Three-script-per-source pattern.** Each source gets `0X_load_*.py` → `0X_filter_*.py` → `0X_to_unified_schema.py` (the equivalents of generate / stratify / unify). Idempotent, seeded, reproducible.
+2. **Raw → interim → unified.** `data/raw/<source>/` is gitignored; `data/interim/<source>_NN.jsonl` is the source-native subsample (tracked); `data/base_scenarios.jsonl` is the only file the agents read.
+3. **Append, don't overwrite.** Phase 2 and Phase 3 scripts must `mode="a"` into `data/base_scenarios.jsonl`. Add a Phase 4 `verify` script that re-derives the file from scratch (`mm_*` + `sc_*` + `et_*`) so we never get duplicate IDs.
+4. **`metadata` carries source-native back-pointers** — for Scruples the original anecdote ID + crowd vote percentages; for ETHICS the original split + index.
+5. **`primary_dimension` is per-source-defined** — for Moral Machine it's `species/age/...`; for Scruples it's the conflict category (relationships/family/work/finances/social); for ETHICS it's the rule-class (deontology/justice). All three populate the same top-level field so aggregation works uniformly.
+
+#### Phase 2 — Scruples (60 items, §10.2) [target: ~1.5 hours]
+
+**Source:** HuggingFace `metaeval/scruples` (or `allenai/scruples`).
+
+Steps:
+1. **`scripts/04_load_scruples.py`** — `from datasets import load_dataset; ds = load_dataset("metaeval/scruples", "anecdotes")`. Save the raw split (or a slice) to `data/raw/scruples/anecdotes.jsonl` (gitignored; let `datasets`' cache hold the rest). Inspect 5 records to confirm field names — expected: `title`, `text`, `binarized_label` (`AUTHOR`/`OTHER`), upvotes/downvotes or category. **Treat the field-shape inspection as the equivalent of yesterday's "inspect the generator" step — don't write the filter script blind.**
+2. **`scripts/05_filter_scruples.py`** — apply two filters:
+   - **High consensus filter:** keep anecdotes where the verdict has >70% agreement (PLAN §3.2). The actual field for this depends on what step 1 reveals — likely `score`, `num_upvotes/num_downvotes`, or a derived `consensus_pct`.
+   - **Category balance:** stratify across the top 5 conflict categories (relationships, family, work, finances, social) at 12 each = 60. If `metaeval/scruples` doesn't expose categories directly, derive them with a keyword classifier on `title` (acceptable for now; document the heuristic).
+   - Output: `data/interim/scruples_60.jsonl` (tracked).
+   - **Open question to resolve in step 1:** does `metaeval/scruples` actually carry category labels? If not, we may need `allenai/scruples` (which has them in `dilemmas`) or accept a heuristic.
+3. **`scripts/06_scruples_to_unified.py`** — write 60 records to `data/interim/scruples_60_unified.jsonl` (NOT directly to `base_scenarios.jsonl`) with:
+   - `scenario_id`: `sc_0001..sc_0060`
+   - `source`: `"scruples"`
+   - `task_format`: `"narrative_judgment"`
+   - `base_text`: the anecdote text (`title` + `\n\n` + `text`)
+   - `options`: `["author_wrong", "other_wrong"]` — Scruples is binary YTA/NTA, mapped onto the AITA framing
+   - `attributes`: `{conflict_category, post_length_bucket, is_first_person}` — keep this minimal; the Counterfactualist will perturb prose more freely than for Moral Machine
+   - `primary_dimension`: the conflict category (so the Phase-1 grouping logic still works)
+   - `ground_truth_majority`: derived from the crowd vote (`"author_wrong"` if AUTHOR > 50%, else `"other_wrong"`); **non-null for all 60 because we filtered for >70% consensus**
+   - `cultural_cluster`: `null`
+   - `metadata`: `{source_dataset, source_id, consensus_pct, raw_label_counts}`
+
+#### Phase 3 — ETHICS (40 items, §10.3) [target: ~1 hour]
+
+**Source:** HuggingFace `hendrycks/ethics` or GitHub `hendrycks/ethics`.
+
+Steps:
+1. **`scripts/07_load_ethics.py`** — load Deontology and Justice subsets, peek at 5 records each.
+   - Deontology: each item is a `(scenario, excuse)` pair with a binary `label` for whether the excuse is reasonable.
+   - Justice: each item is a sentence with a binary label for whether a stated reason justifies a desert claim.
+   - Save raw to `data/raw/ethics/{deontology,justice}.jsonl`.
+2. **`scripts/08_filter_ethics.py`** — sample 20 from each (seed=4242 for parity with Phase 1's sampling), output `data/interim/ethics_40.jsonl` (tracked). No filtering on consensus needed — these are rule-based with clean ground-truth labels.
+3. **`scripts/09_ethics_to_unified.py`** — write 40 records to `data/interim/ethics_40_unified.jsonl` (NOT directly to `base_scenarios.jsonl`):
+   - `scenario_id`: `et_0001..et_0040`
+   - `source`: `"ethics_deontology"` (et_0001..et_0020) or `"ethics_justice"` (et_0021..et_0040)
+   - `task_format`: `"unary_judgment"` (matches the Hendrycks binary-label structure — see §3.4)
+   - `base_text`: the formatted dilemma — for Deontology, present the (scenario, excuse) pair as a question; for Justice, present the desert-claim sentence
+   - `options`: `["reasonable", "unreasonable"]`
+   - `attributes`: `{rule_class, has_excuse, length_bucket}` — minimal, since Maieutic interrogation is the primary lens here
+   - `primary_dimension`: `"deontology"` or `"justice"`
+   - `ground_truth_majority`: from the Hendrycks label
+   - `metadata`: `{source_dataset, source_split, source_index, label_raw}`
+
+#### Assembly — re-run `scripts/10_assemble_base_scenarios.py` [target: instant]
+
+After Phases 2 and 3 each produce a new `*_unified.jsonl` under `data/interim/`, just re-run the assembler. It already enforces:
+- required-field presence per record
+- `scenario_id` uniqueness across the concatenation
+- prints per-source / per-task_format counts and null-ground-truth count
+
+Optional follow-up assertions to add to `10_assemble_*` once Phases 2+3 land (low risk to add):
+- exactly 180 records (80 + 60 + 40)
+- `source ∈ {moral_machine, scruples, ethics_deontology, ethics_justice}`
+- `task_format ∈ {binary_dilemma, unary_judgment, narrative_judgment}`
+- `ground_truth_majority` either in `options` or null (null allowed only for Moral Machine `random` dim — count == 11)
+- `base_text` non-empty and < 8k chars
+
+#### Order of operations tomorrow
+
+1. ETHICS first (~1h, smaller and cleaner) — gets 40 records appended, leaves only Scruples to debug.
+2. Scruples second (~1.5h, more inspection effort) — the field-shape inspection of `metaeval/scruples` is the riskiest step and best done after a warm-up.
+3. Phase 4 verification last (~30min).
+
+**Risks/open questions to resolve early today:**
+- Does `metaeval/scruples` carry conflict-category labels? If not, fall back to `allenai/scruples` or a keyword heuristic.
+- ETHICS rendering: what's the cleanest way to phrase a Deontology (scenario, excuse) pair so the Proposer can answer "reasonable"/"unreasonable" in one word? Pilot 3 manually before scripting.
+- ~~Should we add a `task_format` field~~ **RESOLVED 2026-05-02:** added; see §3.4.
+
+#### Stretch goals (only if Phases 2–4 finish early)
+
+- Pilot the manual morally-relevant vs morally-irrelevant tagging on 30 mixed scenarios (§3.5, §10.5) — this is the bottleneck for RuC/DS computation.
+- Stub `scripts/agents/proposer.py` with a no-op LLM call that just echoes the schema, to validate that nothing in the unified schema breaks the agent contract.
