@@ -32,6 +32,10 @@ REQUIRED_FIELDS = (
     "cultural_cluster", "metadata",
 )
 
+ALLOWED_SOURCES = {"moral_machine", "scruples", "ethics_deontology", "ethics_justice"}
+ALLOWED_TASK_FORMATS = {"binary_dilemma", "unary_judgment", "narrative_judgment"}
+MAX_BASE_TEXT_CHARS = 8000
+
 
 def main():
     slices = sorted(INTERIM_DIR.glob("*_unified.jsonl"))
@@ -58,6 +62,36 @@ def main():
     dupes = [sid for sid, n in Counter(ids).items() if n > 1]
     if dupes:
         raise ValueError(f"Duplicate scenario_id values: {dupes}")
+
+    # Validation: source enum
+    bad_source = [r["scenario_id"] for r in all_records if r["source"] not in ALLOWED_SOURCES]
+    if bad_source:
+        raise ValueError(f"Records with source not in {ALLOWED_SOURCES}: {bad_source[:5]}...")
+
+    # Validation: task_format enum
+    bad_tf = [r["scenario_id"] for r in all_records if r["task_format"] not in ALLOWED_TASK_FORMATS]
+    if bad_tf:
+        raise ValueError(f"Records with task_format not in {ALLOWED_TASK_FORMATS}: {bad_tf[:5]}...")
+
+    # Validation: ground_truth_majority is in options or null
+    bad_gt = []
+    for r in all_records:
+        gt = r["ground_truth_majority"]
+        if gt is None:
+            continue
+        if gt not in r["options"]:
+            bad_gt.append(r["scenario_id"])
+    if bad_gt:
+        raise ValueError(f"Records with ground_truth_majority not in options: {bad_gt[:5]}...")
+
+    # Validation: base_text non-empty and within length cap
+    bad_text = []
+    for r in all_records:
+        bt = r["base_text"]
+        if not bt or len(bt) >= MAX_BASE_TEXT_CHARS:
+            bad_text.append((r["scenario_id"], len(bt) if bt else 0))
+    if bad_text:
+        raise ValueError(f"Records with empty or oversize base_text: {bad_text[:5]}...")
 
     # Write
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

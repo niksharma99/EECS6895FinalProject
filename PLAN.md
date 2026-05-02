@@ -417,11 +417,11 @@ For 2-person team with May 5 deadline, hold these limits:
 
 **Target:** single file `data/base_scenarios.jsonl` with 180 entries in unified schema.
 
-**Current state (2026-05-02):** 120 of 180 records landed.
-- ✅ Phase 1 — Moral Machine (80 records, `mm_0001..mm_0080`) — see §13 entries from 2026-05-01.
-- ✅ Phase 3 — Hendrycks ETHICS (40 records, `et_0001..et_0040`) — see §13 entry from 2026-05-02 ("Phase 3 complete").
-- ⏳ Phase 2 — Scruples (60 records, `sc_0001..sc_0060`) — pending; plan in §13.
-- ⏳ Final assembly check on 180 records — happens automatically when `10_assemble_base_scenarios.py` re-runs.
+**Current state (2026-05-02):** **180/180 records — dataset compilation COMPLETE.**
+- ✅ Phase 1 — Moral Machine (80 records, `mm_0001..mm_0080`) — §13 entries from 2026-05-01.
+- ✅ Phase 3 — Hendrycks ETHICS (40 records, `et_0001..et_0040`) — §13 entry "Phase 3 complete".
+- ✅ Phase 2 — Scruples (60 records, `sc_0001..sc_0060`) — §13 entry "Phase 2 complete".
+- ✅ Final assembly: `data/base_scenarios.jsonl` validated by `10_assemble_base_scenarios.py` — required-field, ID-uniqueness, source-enum, task_format-enum, ground-truth-in-options, base_text-length all passing.
 
 ### 10.1 Phase 1 — Moral Machine (80 items, ~1.5 hours)
 
@@ -492,7 +492,7 @@ ethical judgments on 32,000 real-life anecdotes. AAAI.
 
 ---
 
-*Last updated: May 2, 2026 — Phase 3 (ETHICS, 40 items) complete; `data/base_scenarios.jsonl` now 120 records. Phase 2 (Scruples) remains.*
+*Last updated: May 2, 2026 — Phases 1, 2, 3 all complete. `data/base_scenarios.jsonl` is 180 records. Dataset compilation done; agent-build phase next.*
 
 ---
 
@@ -618,7 +618,63 @@ data/
 
 ---
 
-### 2026-05-02 — Plan for the rest of the dataset (Phase 2 Scruples + assembly)
+### 2026-05-02 — Phase 2 complete: Scruples (60 items) — dataset is now 180/180
+
+**What landed:**
+- ✅ `scripts/04_load_scruples.py` — loaded `justinphan3110/scruples` (first mirror tried, 1,466-record test split, parquet, modern `datasets`-compatible). Saved full split to `data/raw/scruples/anecdotes.jsonl` + 5-record `inspection.jsonl` (both gitignored).
+- ✅ `scripts/05_filter_scruples.py` — applied the §4 filter cascade: 1466 → 1283 (consensus ≥70%) → 1281 (length filter) → 1148 (HISTORICAL only) → 1062 categorized + 86 unmatched dropped → 12 per category × 5 = 60. **No backfill needed**; every category had ≥80 eligible items. `random.seed(4242)`.
+- ✅ `scripts/06_scruples_to_unified.py` — wrote `data/interim/scruples_60_unified.jsonl`.
+- ✅ Re-ran `scripts/10_assemble_base_scenarios.py` → `data/base_scenarios.jsonl` is now **180 records**.
+- ✅ Extended assembler with the optional follow-up assertions from the 2026-05-02 refactor entry: source enum, task_format enum, ground-truth-in-options-or-null, base_text length cap. All passing.
+
+**Decision-gate findings (resolved §3.1 / §3.2 / §3.3 of SCRUPLES_PLAN):**
+- §3.1 (vote distribution): **PRESENT** — `binarized_label_scores: {RIGHT, WRONG}` and 5-class `label_scores`. Consensus filter `max(R, W) / (R + W) ≥ 0.70` applied. Mean consensus of selected 60 = **0.892**.
+- §3.2 (categories): **ABSENT** — no `category` / `flair` / `tag` field. Used keyword regex with priority order `relationships > family > work > finances > social` (first-match-wins on `title + " " + text`). Documented as a heuristic; 86/1148 items unmatched and dropped. Edge case noted: e.g. `sc_0025` is in "work" because of the keyword "work" but the conflict is roommate-driven — accepted limitation.
+- §3.3 (schema): documented in `04_load_scruples.py` and at PLAN above. Note: `binarized_label` is `RIGHT`/`WRONG`, NOT the `AUTHOR`/`OTHER` from SCRUPLES_PLAN §5.1. Mapping used: `WRONG → author_wrong`, `RIGHT → other_wrong`. Both `binarized_label_scores` and the full 5-class `label_scores` preserved in `metadata` for downstream traces.
+
+**ID allocation (per SCRUPLES_PLAN §5.4):**
+- `sc_0001..sc_0012` relationships
+- `sc_0013..sc_0024` family
+- `sc_0025..sc_0036` work
+- `sc_0037..sc_0048` finances
+- `sc_0049..sc_0060` social
+
+**Final dataset stats:**
+- 180 records: 80 moral_machine + 60 scruples + 40 ethics (20 deont + 20 justice).
+- task_format split: 80 binary_dilemma, 60 narrative_judgment, 40 unary_judgment.
+- 169/180 records have non-null `ground_truth_majority`; the 11 nulls are all Moral Machine `random` dim (intentional, for RuC-only use).
+- Length buckets among Scruples: 1 short, 38 medium, 21 long. Max base_text length across whole dataset well below the 8000-char cap.
+
+**SCRUPLES_PLAN.md Definition-of-Done check:**
+- ✅ `data/raw/scruples/` has `anecdotes.jsonl` (1466) + `inspection.jsonl` (5) — both gitignored
+- ✅ `data/interim/scruples_60.jsonl` tracked, exactly 60 records
+- ✅ `data/interim/scruples_60_unified.jsonl` tracked, exactly 60 records
+- ✅ `data/base_scenarios.jsonl` has 180 records, no duplicate IDs
+- ✅ All 60 Scruples records have `source: "scruples"` and `task_format: "narrative_judgment"`
+- ✅ All 60 Scruples records have non-null `ground_truth_majority`
+- ✅ All 180 records pass `len(base_text) < 8000`
+- ✅ Per-category counts: 12 each, no imbalance
+- ✅ Assembler optional assertions added and passing
+- ✅ This changelog entry
+
+**Demo-content swap (after spot-check):**
+- Two records were flagged for live-presentation risk and replaced via a new reusable script `scripts/05a_swap_scruples.py`:
+  - `sc_0023` *"AITA for calling my mother a bitch?"* (profanity in title) → *"AITA for yelling at my mum for not caring about my future?"* (family, GT=other_wrong, consensus 77%)
+  - `sc_0032` *"AITA I Called a Racist the N-Word...Ironic"* (slur in title) → *"AITA for complaining about service in the grocery store?"* (work, GT=other_wrong, consensus 73%)
+- Replacements drawn deterministically from the same category, blocked from the original pool. Swap script can be re-run with new IDs added to `BLOCKED_IDS` if more records get flagged.
+- Final label distribution after swap: 27 author_wrong / 33 other_wrong (was 29/31 pre-swap).
+
+**Phase 2 done. Dataset compilation is COMPLETE.** SCRUPLES_PLAN.md can be removed.
+
+**Next phase (per SCRUPLES_PLAN §10):** the §10.5 "what NOT to do tonight" constraints lift now. Open paths:
+- Manual relevance-tagging pilot on 30 mixed scenarios (PLAN §3.5)
+- Stub `scripts/agents/proposer.py`
+- Counterfactual generation pipeline (dispatches on `task_format`)
+- Maieutic Inquirer prompt design
+
+---
+
+### 2026-05-02 — (superseded) Phase 2 Scruples plan
 
 **Goal:** grow `data/base_scenarios.jsonl` from 80 → 180 records by appending Scruples and ETHICS slices in the same unified schema, then run a Phase 4 verification pass.
 
