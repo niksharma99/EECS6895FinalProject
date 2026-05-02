@@ -1,0 +1,19 @@
+# Third-party code (cloned, not ours)
+scripts/third_party/
+
+# Raw generator output (reproducible from seeded scripts)
+data/raw/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
