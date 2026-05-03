@@ -35,3 +35,5 @@ python scripts/12_generate_model_scoreboard.py
 ```
 
 See `PLAN.md` for the durable project plan, status, results, and changelog.
+
+See `METRICS.md` for plain-language explanations of RuC, DS, and CSR with examples.
