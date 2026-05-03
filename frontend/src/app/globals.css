@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Force light mode for the demo: we built a light-themed design and don't have
+   dark variants on the cards/tables. Tells Safari/Chrome not to apply
+   prefers-color-scheme overrides to form controls or the default canvas. */
+:root {
+  color-scheme: light only;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+html,
+body {
+  color-scheme: light only;
+  background-color: #f8fafc !important; /* slate-50 — matches body class in layout.tsx */
+  color: #0f172a !important; /* slate-900 */
+  min-height: 100%;
+}
+
+main {
+  background-color: #f8fafc;
+}
+
+header,
+footer {
+  color-scheme: light only;
+}
+
+input,
+select,
+textarea,
+button {
+  color-scheme: light only;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}

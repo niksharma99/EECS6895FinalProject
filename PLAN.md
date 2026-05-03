@@ -16,11 +16,12 @@ We are building a **multi-agent stress-testing system** that evaluates not just 
 
 We instantiate two of Edward Chang's (2023) CoCoMo "exploratory thinking" strategies — maieutic (Socratic) questioning and counterfactual reasoning — as **automated agents** that interrogate a model under test.
 
-### 1.2 Three-Agent Architecture
+### 1.2 Agent Architecture
 
 - **Proposer** — the model under test. Receives a dilemma, outputs a judgment + reasoning.
 - **Counterfactualist** — perturbs morally-irrelevant features of the dilemma (gender, age, ethnicity, framing) and re-queries the Proposer. Measures how often the judgment flips inappropriately.
 - **Maieutic Inquirer** — Socratic interrogator. Asks follow-up questions ("why does that property matter morally?", "you said X earlier — does that conflict with Y?"). Surfaces contradictions in the Proposer's stated principles.
+- **CSR Judge** — reads the full trace and classifies whether the dialogue surfaced a substantive contradiction.
 
 ### 1.3 Output
 
@@ -179,7 +180,7 @@ Each perturbation tagged as **morally-irrelevant** (judgment shouldn't flip) or 
                              ▼
                     ┌─────────────────┐
                     │    Proposer     │  ← Model under test
-                    │  (judgment +    │     (Llama-3, Mistral, Qwen)
+                    │  (judgment +    │     (Llama, Claude, GPT)
                     │   reasoning)    │
                     └────────┬────────┘
                              │
@@ -210,21 +211,21 @@ Each perturbation tagged as **morally-irrelevant** (judgment shouldn't flip) or 
 
 ### 4.2 Implementation Stack
 
-- **Orchestration:** LangGraph state machine (handles branching + bounded turns cleanly)
-- **Proposer models (under test):** vllm-served HuggingFace models
-  - Llama-3.1-8B-Instruct
-  - Mistral-7B-Instruct-v0.3
-  - Qwen-3-8B (or similar)
-  - All three play Proposer role; cross-model ablations possible
-- **Counterfactualist:** strong API model (Claude or GPT-4o-mini) — needs strong instruction-following to generate coherent perturbations
-- **Maieutic Inquirer:** same strong model as Counterfactualist — needs reasoning to spot contradictions
+- **Orchestration:** Python CLI runner in `scripts/agents/runner.py`; traces are written incrementally under `runs/<run_id>/`.
+- **Proposer models (under test):**
+  - local Ollama `llama3.2:3b`
+  - Anthropic `claude-haiku-4-5`
+  - OpenAI `gpt-5-mini`
+- **Counterfactualist:** OpenAI `gpt-4.1-mini` with structured JSON output, 4 perturbations per scenario.
+- **Maieutic Inquirer:** OpenAI `gpt-4.1-mini`, max 2 Socratic follow-ups per scenario.
+- **Judge / parser:** deterministic parser for option labels; OpenAI `gpt-4.1-mini` CSR Judge for contradiction classification.
 - **Storage:**
-  - DuckDB for aggregated metrics
   - Per-run JSON traces saved to disk for replay
+  - Static frontend JSON generated from run artifacts
 - **Frontend:**
-  - Next.js with React Flow for the counterfactual tree visualization
-  - Custom courtroom-view for agent dialogue
-  - Recharts for scorecards
+  - Next.js App Router + Tailwind
+  - Dataset browser, demo trace viewer, aggregate scorecard, model scoreboard
+  - Static JSON assets under `frontend/public/`
 
 ### 4.3 Key Design Decisions (defend in report)
 
@@ -238,6 +239,56 @@ Each perturbation tagged as **morally-irrelevant** (judgment shouldn't flip) or 
 - Latency (~30-60s per dilemma in live mode)
 - Risk of agents converging on echo-chamber agreement instead of surfacing real disagreement
 - Single-judge bias (mitigated by replication judge on subset)
+
+### 4.5 Agent Runtime Status
+
+**Status:** implemented and validated. The runtime supports heuristic, Ollama, OpenAI, and Anthropic Proposer clients; OpenAI Counterfactualist; OpenAI Maieutic Inquirer; deterministic parsing; OpenAI CSR Judge; timing and API-usage accounting.
+
+**Proposed module layout:**
+```
+scripts/
+  agents/
+    __init__.py
+    schemas.py              # typed dataclasses / pydantic models for traces
+    model_clients.py        # heuristic, Ollama, OpenAI, Anthropic client adapters
+    prompts.py              # prompt templates by task_format
+    proposer.py             # model-under-test wrapper
+    counterfactualist.py    # perturbation generator
+    maieutic_inquirer.py    # Socratic follow-up generator
+    judge.py                # answer parsing + contradiction / relevance checks
+    metrics.py              # RuC, DS, CSR, aggregation
+    runner.py               # CLI entrypoint for pilot/full runs
+```
+
+**Runtime flow per scenario:**
+1. Load one unified record from `data/base_scenarios.jsonl`.
+2. `Proposer` receives only `base_text`, source-specific system prompt, and allowed options. It returns `{judgment, reasoning, raw_text}`.
+3. `Counterfactualist` receives the full record plus base judgment/reasoning. It generates 3-5 perturbations for the pilot, each tagged with `perturbation_type`, `morally_relevant`, `expected_behavior`, and `perturbed_text`.
+4. `Proposer` is re-run on each perturbation using the same model and parser.
+5. `Maieutic Inquirer` asks 2 follow-up questions based on the base judgment/reasoning and, when useful, selected perturbation failures.
+6. `Judge` parses judgments deterministically where possible and calls an API judge only for ambiguous outputs or contradiction labels.
+7. `Metrics` computes per-scenario RuC, DS, CSR and writes a full trace to `runs/<run_id>/traces/<scenario_id>.json`.
+
+**Component responsibilities:**
+- **Proposer:** isolate the model under test. It should not see ground truth, attributes, scenario ID, or perturbation tags.
+- **Counterfactualist:** generate coherent perturbations while preserving the source task format. It can see attributes and metadata because it is a probe generator, not the model under test.
+- **Maieutic Inquirer:** extract the Proposer's stated principle and challenge it with bounded follow-ups. Keep max turns at 2 for cost and demo clarity.
+- **Judge:** normalize labels into the exact `options` vocabulary; flag contradictions with a short explanation. Use strict JSON output.
+- **Runner:** make experiments reproducible: model IDs, seeds, sample IDs, prompt versions, timestamps, and costs should all be logged.
+
+**Pilot defaults used for the 30-scenario comparison:**
+- **Sample:** 30 scenarios = 10 Moral Machine, 10 Scruples, 10 ETHICS, selected in `data/pilot/pilot_30_ids.json`.
+- **Perturbations:** 4 per scenario = 2 morally irrelevant + 2 morally relevant.
+- **Maieutic turns:** 2 per scenario.
+- **Proposer models:** `llama3.2:3b`, `claude-haiku-4-5`, `gpt-5-mini`.
+- **Counterfactualist / Maieutic / CSR Judge:** `gpt-4.1-mini` for cost-controlled, fixed instrumentation.
+
+**Deliverables from the pilot:**
+- `runs/<run_id>/config.json`
+- `runs/<run_id>/traces/*.json`
+- `runs/<run_id>/metrics.json`
+- 3-4 hand-picked case-study traces for the demo
+- Static model-comparison data: `frontend/public/model_scoreboard.json`, generated by `scripts/12_generate_model_scoreboard.py`.
 
 ---
 
@@ -423,51 +474,90 @@ For 2-person team with May 5 deadline, hold these limits:
 - ✅ Phase 2 — Scruples (60 records, `sc_0001..sc_0060`) — §13 entry "Phase 2 complete".
 - ✅ Final assembly: `data/base_scenarios.jsonl` validated by `10_assemble_base_scenarios.py` — required-field, ID-uniqueness, source-enum, task_format-enum, ground-truth-in-options, base_text-length all passing.
 
-### 10.1 Phase 1 — Moral Machine (80 items, ~1.5 hours)
+### 10.1 Completed Dataset Artifacts
 
-1. Clone https://github.com/kztakemoto/mmllm
-2. Inspect `generate_moral_machine_scenarios.py` and `config.py`
-3. Write a wrapper script that imports the generator function directly (NOT `run.py`)
-4. Generate ~200 scenarios with random seed 42
-5. Inspect 5-10 manually to confirm text format
-6. Stratify down to 80 across the 9 dimensions (~8-10 per primary dimension)
-7. Remap to unified schema
+| Artifact | Count | Status |
+|---|---:|---|
+| `data/interim/moral_machine_80.jsonl` | 80 | stratified source-native slice |
+| `data/interim/moral_machine_80_unified.jsonl` | 80 | unified Moral Machine slice |
+| `data/interim/scruples_60.jsonl` | 60 | filtered high-consensus Scruples slice |
+| `data/interim/scruples_60_unified.jsonl` | 60 | unified Scruples slice |
+| `data/interim/ethics_40.jsonl` | 40 | sampled ETHICS source-native slice |
+| `data/interim/ethics_40_unified.jsonl` | 40 | unified ETHICS slice |
+| `data/base_scenarios.jsonl` | 180 | final assembled dataset |
 
-### 10.2 Phase 2 — Scruples (60 items, ~1.5 hours)
+### 10.2 Final Dataset Distribution
 
-1. `pip install datasets`
-2. Load `metaeval/scruples` from HuggingFace
-3. Filter for >70% crowd consensus
-4. Sample 60 across top 5 conflict categories (12 each)
-5. Remap to unified schema
+- **By source:** 80 Moral Machine, 60 Scruples, 20 ETHICS Deontology, 20 ETHICS Justice.
+- **By task format:** 80 `binary_dilemma`, 60 `narrative_judgment`, 40 `unary_judgment`.
+- **By primary dimension:** Moral Machine has 11-12 per primary dimension; Scruples has 12 per category; ETHICS has 20 deontology and 20 justice.
+- **Ground truth:** 169/180 records have non-null `ground_truth_majority`; the 11 null records are Moral Machine `random` scenarios and are expected.
+- **Scruples quality:** all selected records have at least 70% binarized crowd consensus; mean consensus is ~89%.
 
-### 10.3 Phase 3 — ETHICS (40 items, ~1 hour)
+### 10.3 Reproducibility Commands
 
-1. Pull from `hendrycks/ethics` (GitHub or HuggingFace)
-2. Sample 20 from Deontology, 20 from Justice
-3. Remap to unified schema
+The final dataset can be reproduced from the raw downloads/generator with:
 
-### 10.4 Phase 4 — Schema Unification (~30 min)
+```bash
+python scripts/01_generate_moral_machine.py
+python scripts/02_stratify_moral_machine.py
+python scripts/03_to_unified_schema.py
+python scripts/04_load_scruples.py
+python scripts/05_filter_scruples.py
+python scripts/05a_swap_scruples.py
+python scripts/06_scruples_to_unified.py
+python scripts/07_load_ethics.py
+python scripts/08_filter_ethics.py
+python scripts/09_ethics_to_unified.py
+python scripts/10_assemble_base_scenarios.py
+```
 
-Combine all three sources into single JSONL file. Verify field consistency.
+`scripts/10_assemble_base_scenarios.py` is the final validation gate and the single source of truth for `data/base_scenarios.jsonl`.
 
-### 10.5 What NOT to Do Tonight
+### 10.4 Current System Status
 
-- Don't generate counterfactual perturbations yet (Counterfactualist agent's job, programmatic)
-- Don't manually tag morally-relevant vs morally-irrelevant axes for all 180 yet (pilot 30 first to validate protocol)
-- Don't pre-classify ground-truth judgments for Maieutic probes yet (comes when building agent prompts)
-- Don't run anything through a model yet (use generator function only, no API calls)
+Dataset compilation, agent runtime, model-comparison pilots, and the demo frontend are complete for the May 5 demo.
+
+**Agent runtime:**
+- `scripts/agents/` contains the runnable harness.
+- `scripts/11_select_pilot_scenarios.py` defines the balanced 30-scenario pilot.
+- `scripts/12_generate_model_scoreboard.py` generates frontend model-comparison data from completed runs.
+
+**Validated Proposer runs:**
+
+| Run | Proposer | n | RuC | DS | CSR | Ambiguous parses | Runtime |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `pilot30_csr_judge` | `llama3.2:3b` | 30 | 0.917 | 0.150 | 0.500 | 0/210 | 18.7 min |
+| `pilot30_proposer_claude_haiku45` | `claude-haiku-4-5` | 30 | 0.950 | 0.233 | 0.367 | 0/210 | 13.3 min |
+| `pilot30_proposer_openai_gpt5mini` + `_remaining` | `gpt-5-mini` | 30 | 0.767 | 0.400 | 0.333 | 0/210 | 13.2 min |
+
+**Interpretation for demo/report:**
+- Claude Haiku has the strongest RuC and improves CSR over local Llama, but DS remains modest.
+- GPT-5 mini has the strongest DS, but lower RuC.
+- Local Llama remains the no-cost/local baseline and has the highest contradiction rate.
+- All Proposers parsed cleanly across the 30-scenario comparison.
+
+**Frontend:**
+- Next.js app under `frontend/`.
+- Dataset browser: `/dataset`
+- Demo trace viewer: `/traces`
+- Model-selectable aggregate scorecard: `/scorecard`
+- Cross-model scoreboard: `/models`
+- Safari/system dark-mode issue fixed by pinning the app to light-only rendering.
+
+**Remaining work before final submission:**
+1. Human spot-check the most important CSR labels used in the presentation/report.
+2. Decide whether to run optional 3x demo-trace reruns for median CSR stability.
+3. Move concise method/results prose from this plan into final slides and report.
 
 ---
 
 ## 11. Open Questions / TBD
 
 - ~~Exact field names returned by `generate_moral_machine_scenarios()` — inspect after first run~~ **RESOLVED 2026-05-01:** signature is `generate_moral_machine_scenarios(scenario_dimension, is_in_car, is_interventionism, is_law) → (system_content, user_content, scenario_info)`. `scenario_info` carries `scenario_dimension`, `is_in_car`, `is_interventionism`, `is_law`, `scenario_dimension_group_type`, `count_dict_1`, `count_dict_2`, `traffic_light_pattern`. Note: imports via `from config import *`, so wrapper must add `scripts/third_party/mmllm/` to `sys.path`.
-- Final choice of Counterfactualist/Inquirer model (Claude vs GPT-4o-mini) — depends on cost and quality testing
-- Whether to include cultural cluster stratification for Moral Machine (depends on time)
-- Whether to add a third Proposer model beyond Llama and Mistral (Qwen vs Phi vs Gemma)
-- Frontend framework details (React Flow vs custom SVG for counterfactual tree)
+- Whether to include cultural cluster analysis in the demo or defer it to the report.
 - Specific weighting scheme if we aggregate metrics into a single robustness index
+- How much manual relevance-tag review is required before making claims beyond the 30-scenario pilot.
 
 ---
 
@@ -492,11 +582,40 @@ ethical judgments on 32,000 real-life anecdotes. AAAI.
 
 ---
 
-*Last updated: May 2, 2026 — Phases 1, 2, 3 all complete. `data/base_scenarios.jsonl` is 180 records. Dataset compilation done; agent-build phase next.*
+*Last updated: May 2, 2026 — dataset, agent runtime, 30-scenario model comparison, and demo frontend are complete for presentation prep.*
 
 ---
 
 ## 13. Changelog
+
+### 2026-05-02 — Agent runtime, model comparison, and frontend complete
+
+**Agent runtime:**
+- ✅ `scripts/agents/` package implemented: schemas, prompt templates, model clients, Proposer wrapper, Counterfactualist, Maieutic Inquirer, CSR Judge, metrics, runner.
+- ✅ Runtime supports Proposer backends: heuristic, Ollama, OpenAI, Anthropic.
+- ✅ OpenAI `gpt-4.1-mini` selected as fixed instrumentation model for Counterfactualist, Maieutic Inquirer, and CSR Judge.
+- ✅ Runner writes `config.json`, per-scenario traces, metrics, timing, and API usage.
+
+**30-scenario model comparison:**
+- ✅ Local baseline: `runs/pilot30_csr_judge` (`llama3.2:3b`).
+- ✅ Claude run: `runs/pilot30_proposer_claude_haiku45` (`claude-haiku-4-5`).
+- ✅ OpenAI run: `runs/pilot30_proposer_openai_gpt5mini` + `runs/pilot30_proposer_openai_gpt5mini_remaining` (`gpt-5-mini`).
+- ✅ `scripts/12_generate_model_scoreboard.py` generates `frontend/public/model_scoreboard.json`.
+- ✅ Main result table added to §10.4.
+
+**Frontend:**
+- ✅ Next.js app built under `frontend/`.
+- ✅ `/dataset` browser over all 180 unified records.
+- ✅ `/traces` and `/traces/[id]` demo trace viewer for four static case studies.
+- ✅ `/scorecard` aggregate scorecard now supports model selection.
+- ✅ `/models` cross-model scoreboard added.
+- ✅ Safari dark-mode inheritance bug fixed with light-only rendering.
+- ✅ `npm run build` passes, generating 192 static pages.
+
+**Temporary docs removed:**
+- ✅ `FRONTEND.md` removed after frontend completion.
+- ✅ `MODELS_EXPERIMENT.md` removed after model-comparison details were copied into this plan.
+- ✅ `AGENTS.md` removed after agent-runtime and model-comparison details were copied into this plan.
 
 ### 2026-05-01 — Repository scaffold + Moral Machine generator inspection
 

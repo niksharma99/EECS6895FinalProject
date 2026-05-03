@@ -2,7 +2,7 @@
 
 A walkthrough of `data/base_scenarios.jsonl` (**180 records**: 80 Moral Machine + 60 Scruples + 40 Hendrycks ETHICS) and how it feeds the three-agent testing pipeline. Read alongside `PLAN.md`.
 
-> **Status:** All three phases complete. Dataset compilation done; agent build is the next phase.
+> **Status:** Dataset compilation, agent runtime, 30-scenario model comparison, and demo frontend are complete for presentation prep.
 
 ---
 
@@ -22,7 +22,15 @@ A walkthrough of `data/base_scenarios.jsonl` (**180 records**: 80 Moral Machine 
                           └──► CSR: does the Proposer contradict its stated principles?
 ```
 
-Three outputs per scenario per Proposer model: **RuC**, **DS**, **CSR**. Aggregated across the dataset, these become the cross-model robustness comparison that drives the report.
+Three outputs per scenario per Proposer model: **RuC**, **DS**, **CSR**. Aggregated across the pilot set, these become the cross-model robustness comparison that drives the report and `/models` frontend page.
+
+Current 30-scenario comparison:
+
+| Proposer | RuC | DS | CSR | Note |
+|---|---:|---:|---:|---|
+| `llama3.2:3b` | 0.917 | 0.150 | 0.500 | local baseline |
+| `claude-haiku-4-5` | 0.950 | 0.233 | 0.367 | strongest robustness |
+| `gpt-5-mini` | 0.767 | 0.400 | 0.333 | strongest discriminating sensitivity |
 
 ---
 

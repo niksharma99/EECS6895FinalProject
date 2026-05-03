@@ -3,6 +3,10 @@ scripts/third_party/
 
 # Raw generator output (reproducible from seeded scripts)
 data/raw/
+runs/
+.env
+.env.*
+!.env.sample
 
 # Python
 __pycache__/
@@ -11,6 +15,12 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
 
 # OS / editors
 .DS_Store
