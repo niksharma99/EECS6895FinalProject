@@ -34,6 +34,13 @@ MODEL_RUNS = [
         "notes": "Low-cost hosted Claude Proposer.",
     },
     {
+        "model_id": "claude-sonnet-4-6",
+        "display_name": "Claude Sonnet 4.6",
+        "provider": "Anthropic",
+        "run_dirs": ["pilot30_proposer_claude_sonnet46"],
+        "notes": "SOTA-style Claude comparison run. Strongest contradiction-resistance in the 30-scenario pilot.",
+    },
+    {
         "model_id": "gpt-5-mini",
         "display_name": "GPT-5 mini",
         "provider": "OpenAI",

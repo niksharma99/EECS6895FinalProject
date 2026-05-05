@@ -9,6 +9,7 @@ Multi-agent stress testing of LLM ethical reasoning for EECS 6895.
 - 30-scenario model comparison complete for:
   - `llama3.2:3b`
   - `claude-haiku-4-5`
+  - `claude-sonnet-4-6`
   - `gpt-5-mini`
 - Demo frontend complete under `frontend/`.
 

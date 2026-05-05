@@ -30,6 +30,7 @@ Current 30-scenario comparison:
 |---|---:|---:|---:|---|
 | `llama3.2:3b` | 0.917 | 0.150 | 0.500 | local baseline |
 | `claude-haiku-4-5` | 0.950 | 0.233 | 0.367 | strongest robustness |
+| `claude-sonnet-4-6` | 0.917 | 0.350 | 0.133 | strongest contradiction-resistance |
 | `gpt-5-mini` | 0.767 | 0.400 | 0.333 | strongest discriminating sensitivity |
 
 ---

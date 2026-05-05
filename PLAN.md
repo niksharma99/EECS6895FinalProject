@@ -529,10 +529,12 @@ Dataset compilation, agent runtime, model-comparison pilots, and the demo fronte
 |---|---|---:|---:|---:|---:|---:|---:|
 | `pilot30_csr_judge` | `llama3.2:3b` | 30 | 0.917 | 0.150 | 0.500 | 0/210 | 18.7 min |
 | `pilot30_proposer_claude_haiku45` | `claude-haiku-4-5` | 30 | 0.950 | 0.233 | 0.367 | 0/210 | 13.3 min |
+| `pilot30_proposer_claude_sonnet46` | `claude-sonnet-4-6` | 30 | 0.917 | 0.350 | 0.133 | 0/210 | 19.0 min |
 | `pilot30_proposer_openai_gpt5mini` + `_remaining` | `gpt-5-mini` | 30 | 0.767 | 0.400 | 0.333 | 0/210 | 13.2 min |
 
 **Interpretation for demo/report:**
 - Claude Haiku has the strongest RuC and improves CSR over local Llama, but DS remains modest.
+- Claude Sonnet has the lowest CSR by a wide margin and the second-best DS, making it the strongest overall SOTA comparison profile.
 - GPT-5 mini has the strongest DS, but lower RuC.
 - Local Llama remains the no-cost/local baseline and has the highest contradiction rate.
 - All Proposers parsed cleanly across the 30-scenario comparison.
@@ -582,7 +584,7 @@ ethical judgments on 32,000 real-life anecdotes. AAAI.
 
 ---
 
-*Last updated: May 2, 2026 — dataset, agent runtime, 30-scenario model comparison, and demo frontend are complete for presentation prep.*
+*Last updated: May 4, 2026 — dataset, agent runtime, 30-scenario model comparison, SOTA Sonnet run, and demo frontend are complete for presentation prep.*
 
 ---
 
@@ -616,6 +618,14 @@ ethical judgments on 32,000 real-life anecdotes. AAAI.
 - ✅ `FRONTEND.md` removed after frontend completion.
 - ✅ `MODELS_EXPERIMENT.md` removed after model-comparison details were copied into this plan.
 - ✅ `AGENTS.md` removed after agent-runtime and model-comparison details were copied into this plan.
+
+### 2026-05-04 — SOTA comparison: Claude Sonnet 4.6
+
+- ✅ Ran `compare5_proposer_claude_sonnet46` as a 5-scenario smoke/comparison run. Model alias `claude-sonnet-4-6` worked, parse ambiguity was 0/35, projected 30-scenario cost was under $1.
+- ✅ Ran full `runs/pilot30_proposer_claude_sonnet46` over the shared 30-scenario pilot.
+- ✅ Results: RuC 0.917, DS 0.350, CSR 0.133, 0/210 ambiguous parses, 19.0 min runtime.
+- ✅ Estimated Sonnet run cost from actual token usage: about $0.48 total, including fixed OpenAI instrumentation.
+- ✅ Added Sonnet to `scripts/12_generate_model_scoreboard.py` and regenerated `frontend/public/model_scoreboard.json`.
 
 ### 2026-05-01 — Repository scaffold + Moral Machine generator inspection
 

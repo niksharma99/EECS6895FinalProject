@@ -169,11 +169,12 @@ The metrics are most useful together.
 |---|---:|---:|---:|---|
 | `llama3.2:3b` | 0.917 | 0.150 | 0.500 | Stable under irrelevant changes, but often rigid under relevant changes; contradictions surfaced in half the pilot. |
 | `claude-haiku-4-5` | 0.950 | 0.233 | 0.367 | Strongest robustness and lower contradiction rate, but still modest sensitivity. |
+| `claude-sonnet-4-6` | 0.917 | 0.350 | 0.133 | Best contradiction-resistance and second-best sensitivity, while preserving strong robustness. |
 | `gpt-5-mini` | 0.767 | 0.400 | 0.333 | Most sensitive to relevant changes, but less robust under irrelevant changes. |
 
 The important result is not "one model wins." The useful finding is that the models have different robustness profiles:
 
-- Claude Haiku looks more stable.
+- Claude Haiku looks most stable.
+- Claude Sonnet looks most internally consistent under questioning.
 - GPT-5 mini looks more responsive to meaningful changes.
 - Llama 3.2 3B is a useful local baseline but shows more contradictions.
-
