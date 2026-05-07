@@ -3,3 +3,4 @@ pandas>=2.1
 datasets>=2.18
 openai>=1.76
 python-dotenv>=1.0
+pytest>=8.0

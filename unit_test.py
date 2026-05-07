@@ -11,7 +11,7 @@ Covers:
   - Ethical frameworks data integrity
   - End-to-end trace structure
 
-Run:  pytest test_project.py -v
+Run:  python -m pytest unit_test.py -v
 """
 
 import json
@@ -995,7 +995,7 @@ class TestModelScoreboard:
 
 
 # ---------------------------------------------------------------------------
-# Run with: pytest test_project.py -v
+# Run with: python -m pytest unit_test.py -v
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
